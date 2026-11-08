@@ -31,4 +31,3 @@ this server build.
 
 The source project is licensed under Apache-2.0; see
 [`UPSTREAM-LICENSE`](./UPSTREAM-LICENSE) and [`NOTICE`](./NOTICE).
-

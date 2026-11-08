@@ -4,12 +4,12 @@ index 3bfa8f2..1bf8ac6 100644
 +++ b/src/main/java/org/patryk3211/powergrid/config/CElectricity.java
 @@ -99,7 +99,7 @@ public class CElectricity extends ConfigBase {
          public static final String thermal = "Thermal properties for all devices";
- 
+
          public static final String explosiveDeconstruction = "Controls the behaviour of overheated devices. If false, instead of exploding, they break without dropping items.";
 -        public static final String overheating = "Controls the overheat mechanic. Devices which are overheated, break.";
 +        public static final String overheating = "Controls thermal damage and switch overvoltage failures. When disabled, devices do not fail from overheating and switches do not fail from overvoltage.";
          public static final String wireOverheating = "Controls the overheat mechanic for wires. Wires will burn if they overheat.";
- 
+
          public static final String heaterFanProcessingSpeedMultiplier = "Multiplier of the base fan bulk processing time applied to items processed with the heating coil (lower value means faster processing)";
 diff --git a/src/main/java/org/patryk3211/powergrid/electricity/electricswitch/SwitchBlockEntity.java b/src/main/java/org/patryk3211/powergrid/electricity/electricswitch/SwitchBlockEntity.java
 index d87dd13..6af5d7f 100644
@@ -31,7 +31,7 @@ index fb007e9..abd5ff1 100644
 @@ -122,14 +122,14 @@ public abstract class LightBulbState implements ElectricBehaviour.SyncAppender {
                  temperature = cachedAmbientTemperature;
              filament.setResistance(bulb.resistanceFunction(temperature));
- 
+
 -            if (isOverheated() && overheatTicks++ >= 4) {
 +            if (ThermalBehaviour.shouldOverheat() && isOverheated() && overheatTicks++ >= 4) {
                  burned = true;
