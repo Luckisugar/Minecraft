@@ -1,0 +1,29 @@
+{
+  "required": true,
+  "package": "org.patryk3211.powergrid.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "minVersion": "0.8.3",
+  "mixins": [
+    "AirCurrentMixin",
+    "ArmBlockEntityMixin",
+    "BeltDeployerMixin",
+    "BlockStateBaseMixin",
+    "ChunkMapAccessor",
+    "ChunkMapAccessor$TrackedEntityAccessor",
+    "ChuteBlockEntityMixin",
+    "EntityMixin",
+    "FanProcessingMixin",
+    "FluidPropagatorMixin",
+    "KineticBlockEntityAccessor",
+    "LightningAccessor",
+    "PlayerMixin",
+    "RecipeApplierMixin",
+    "SheepMixin",
+    "SoundEntryBuilderMixin",
+    "sable.SubLevelAssemblerMixin",
+    "simulated.GimbalSensorScrollMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+	}
+}

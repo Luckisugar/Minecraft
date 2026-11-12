@@ -1,0 +1,293 @@
+/*
+ * Copyright 2025 patryk3211
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.patryk3211.powergrid.data.recipes;
+
+import com.google.common.base.Supplier;
+import com.simibubi.create.Create;
+import com.simibubi.create.api.data.recipe.BaseRecipeProvider;
+import com.tterrag.registrate.util.entry.ItemProviderEntry;
+import net.createmod.catnip.registry.RegisteredObjectsHelper;
+import net.minecraft.advancements.critereon.ItemPredicate;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.data.PackOutput;
+import net.minecraft.data.recipes.*;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.*;
+import net.minecraft.world.level.ItemLike;
+import org.patryk3211.powergrid.PowerGrid;
+
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
+
+/**
+ * @see com.simibubi.create.foundation.data.recipe.CreateStandardRecipeGen
+ */
+public abstract class StandardRecipeProvider extends BaseRecipeProvider {
+    public StandardRecipeProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> registries) {
+        super(output, registries, PowerGrid.MOD_ID);
+    }
+
+    static class Marker {
+	}
+
+	String currentFolder = "";
+
+	Marker enterFolder(String folder) {
+		currentFolder = folder;
+		return new Marker();
+	}
+
+	GeneratedRecipeBuilder create(Supplier<ItemLike> result) {
+		return new GeneratedRecipeBuilder(currentFolder, result);
+	}
+
+	GeneratedRecipeBuilder create(ResourceLocation result) {
+		return new GeneratedRecipeBuilder(currentFolder, result);
+	}
+
+	GeneratedRecipeBuilder create(ItemProviderEntry<? extends ItemLike, ? extends ItemLike> result) {
+		return create(result::get);
+	}
+
+	GeneratedRecipe createSpecial(Function<CraftingBookCategory, Recipe<?>> builder, String recipeType,
+								  String path) {
+		ResourceLocation location = Create.asResource(recipeType + "/" + currentFolder + "/" + path);
+		return register(consumer -> {
+			SpecialRecipeBuilder b = SpecialRecipeBuilder.special(builder);
+			b.save(consumer, location.toString());
+		});
+	}
+
+	GeneratedRecipe conversionCycle(List<ItemProviderEntry<? extends ItemLike, ? extends ItemLike>> cycle) {
+		GeneratedRecipe result = null;
+		for (int i = 0; i < cycle.size(); i++) {
+			ItemProviderEntry<? extends ItemLike, ? extends ItemLike> currentEntry = cycle.get(i);
+			ItemProviderEntry<? extends ItemLike, ? extends ItemLike> nextEntry = cycle.get((i + 1) % cycle.size());
+			result = create(nextEntry).withSuffix("_from_conversion")
+				.unlockedBy(currentEntry::get)
+				.viaShapeless(b -> b.requires(currentEntry.get()));
+		}
+		return result;
+	}
+
+	GeneratedRecipe clearData(ItemProviderEntry<? extends ItemLike, ? extends ItemLike> item) {
+		return create(item).withSuffix("_clear")
+			.unlockedBy(item::get)
+			.viaShapeless(b -> b.requires(item.get()));
+	}
+
+	@Override
+	public void buildRecipes(RecipeOutput recipeOutput) {
+		all.forEach(c -> c.register(recipeOutput));
+		PowerGrid.LOGGER.info(getName() + " registered " + all.size() + " recipe" + (all.size() == 1 ? "" : "s"));
+	}
+
+	protected GeneratedRecipe register(GeneratedRecipe recipe) {
+		all.add(recipe);
+		return recipe;
+	}
+
+	class GeneratedRecipeBuilder {
+		private String path;
+		private String suffix;
+		private Supplier<? extends ItemLike> result;
+		private ResourceLocation compatDatagenOutput;
+
+		private Supplier<ItemPredicate> unlockedBy;
+		private int amount;
+
+		private GeneratedRecipeBuilder(String path) {
+			this.path = path;
+			this.suffix = "";
+			this.amount = 1;
+		}
+
+		public GeneratedRecipeBuilder(String path, Supplier<? extends ItemLike> result) {
+			this(path);
+			this.result = result;
+		}
+
+		public GeneratedRecipeBuilder(String path, ResourceLocation result) {
+			this(path);
+			this.compatDatagenOutput = result;
+		}
+
+		GeneratedRecipeBuilder returns(int amount) {
+			this.amount = amount;
+			return this;
+		}
+
+		GeneratedRecipeBuilder unlockedBy(Supplier<? extends ItemLike> item) {
+			this.unlockedBy = () -> ItemPredicate.Builder.item()
+				.of(item.get())
+				.build();
+			return this;
+		}
+
+		GeneratedRecipeBuilder unlockedByTag(Supplier<TagKey<Item>> tag) {
+			this.unlockedBy = () -> ItemPredicate.Builder.item()
+				.of(tag.get())
+				.build();
+			return this;
+		}
+
+		GeneratedRecipeBuilder withSuffix(String suffix) {
+			this.suffix = suffix;
+			return this;
+		}
+
+		GeneratedRecipe viaShaped(UnaryOperator<ShapedRecipeBuilder> builder) {
+			return register(consumer -> {
+				ShapedRecipeBuilder b =
+					builder.apply(ShapedRecipeBuilder.shaped(RecipeCategory.MISC, result.get(), amount));
+				if (unlockedBy != null)
+					b.unlockedBy("has_item", inventoryTrigger(unlockedBy.get()));
+				b.save(consumer, createLocation("crafting"));
+			});
+		}
+
+		GeneratedRecipe viaShapeless(UnaryOperator<ShapelessRecipeBuilder> builder) {
+			return register(consumer -> {
+				ShapelessRecipeBuilder b =
+					builder.apply(ShapelessRecipeBuilder.shapeless(RecipeCategory.MISC, result.get(), amount));
+				if (unlockedBy != null)
+					b.unlockedBy("has_item", inventoryTrigger(unlockedBy.get()));
+
+				b.save(consumer, createLocation("crafting"));
+			});
+		}
+
+		GeneratedRecipe viaNetheriteSmithing(Supplier<? extends Item> base, Supplier<Ingredient> upgradeMaterial) {
+			return register(consumer -> {
+				SmithingTransformRecipeBuilder b =
+					SmithingTransformRecipeBuilder.smithing(Ingredient.of(Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE),
+						Ingredient.of(base.get()), upgradeMaterial.get(), RecipeCategory.COMBAT, result.get()
+							.asItem());
+				b.unlocks("has_item", inventoryTrigger(ItemPredicate.Builder.item()
+					.of(base.get())
+					.build()));
+				b.save(consumer, createLocation("crafting"));
+			});
+		}
+
+		private ResourceLocation createSimpleLocation(String recipeType) {
+			return PowerGrid.asResource(recipeType + "/" + getRegistryName().getPath() + suffix);
+		}
+
+		private ResourceLocation createLocation(String recipeType) {
+			return PowerGrid.asResource(recipeType + "/" + path + "/" + getRegistryName().getPath() + suffix);
+		}
+
+		private ResourceLocation getRegistryName() {
+			return compatDatagenOutput == null ? RegisteredObjectsHelper.getKeyOrThrow(result.get()
+				.asItem()) : compatDatagenOutput;
+		}
+
+		GeneratedCookingRecipeBuilder viaCooking(Supplier<? extends ItemLike> item) {
+			return unlockedBy(item).viaCookingIngredient(() -> Ingredient.of(item.get()));
+		}
+
+		GeneratedCookingRecipeBuilder viaCookingTag(Supplier<TagKey<Item>> tag) {
+			return unlockedByTag(tag).viaCookingIngredient(() -> Ingredient.of(tag.get()));
+		}
+
+		GeneratedCookingRecipeBuilder viaCookingIngredient(Supplier<Ingredient> ingredient) {
+			return new GeneratedCookingRecipeBuilder(ingredient);
+		}
+
+		class GeneratedCookingRecipeBuilder {
+			private final Supplier<Ingredient> ingredient;
+			private float exp;
+			private int cookingTime;
+
+			private final RecipeSerializer<? extends AbstractCookingRecipe> FURNACE = RecipeSerializer.SMELTING_RECIPE,
+				SMOKER = RecipeSerializer.SMOKING_RECIPE, BLAST = RecipeSerializer.BLASTING_RECIPE,
+				CAMPFIRE = RecipeSerializer.CAMPFIRE_COOKING_RECIPE;
+
+			GeneratedCookingRecipeBuilder(Supplier<Ingredient> ingredient) {
+				this.ingredient = ingredient;
+				cookingTime = 200;
+				exp = 0;
+			}
+
+			GeneratedCookingRecipeBuilder forDuration(int duration) {
+				cookingTime = duration;
+				return this;
+			}
+
+			GeneratedCookingRecipeBuilder rewardXP(float xp) {
+				exp = xp;
+				return this;
+			}
+
+			GeneratedRecipe inFurnace() {
+				return inFurnace(b -> b);
+			}
+
+			GeneratedRecipe inFurnace(UnaryOperator<SimpleCookingRecipeBuilder> builder) {
+				return create(FURNACE, builder, 1);
+			}
+
+			GeneratedRecipe inSmoker() {
+				return inSmoker(b -> b);
+			}
+
+			GeneratedRecipe inSmoker(UnaryOperator<SimpleCookingRecipeBuilder> builder) {
+				create(FURNACE, builder, 1);
+				create(CAMPFIRE, builder, 3);
+				return create(SMOKER, builder, .5f);
+			}
+
+			GeneratedRecipe inBlastFurnace() {
+				return inBlastFurnace(b -> b);
+			}
+
+			GeneratedRecipe inBlastFurnace(UnaryOperator<SimpleCookingRecipeBuilder> builder) {
+				create(FURNACE, builder, 1);
+				return create(BLAST, builder, .5f);
+			}
+
+			private <T extends AbstractCookingRecipe> GeneratedRecipe create(RecipeSerializer<T> serializer,
+																	  UnaryOperator<SimpleCookingRecipeBuilder> builder, float cookingTimeModifier) {
+				return register(consumer -> {
+					boolean isOtherMod = compatDatagenOutput != null;
+
+					SimpleCookingRecipeBuilder b = builder.apply(
+							SimpleCookingRecipeBuilder.generic(
+									ingredient.get(),
+									RecipeCategory.MISC,
+									isOtherMod ? Items.DIRT : result.get(),
+									exp,
+									(int) (cookingTime * cookingTimeModifier),
+									serializer,
+									null
+							)
+					);
+
+					if (unlockedBy != null)
+						b.unlockedBy("has_item", inventoryTrigger(unlockedBy.get()));
+					b.save(consumer, createSimpleLocation(RegisteredObjectsHelper.getKeyOrThrow(serializer)
+						.getPath()));
+				});
+			}
+		}
+	}
+}

@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "I": {
+      "tag": "c:iron_plates"
+    },
+    "P": {
+      "item": "powergrid:pins"
+    },
+    "R": {
+      "item": "powergrid:resistive_coil"
+    }
+  },
+  "pattern": [
+    " P ",
+    "IRI",
+    "IRI"
+  ],
+  "result": {
+    "item": "powergrid:heating_coil"
+  },
+  "show_notification": true
+}

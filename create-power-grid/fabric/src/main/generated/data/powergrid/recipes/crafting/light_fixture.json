@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "I": {
+      "tag": "c:iron_plates"
+    },
+    "P": {
+      "item": "powergrid:pins"
+    },
+    "Z": {
+      "tag": "c:zinc_plates"
+    }
+  },
+  "pattern": [
+    "I",
+    "Z",
+    "P"
+  ],
+  "result": {
+    "item": "powergrid:light_fixture"
+  },
+  "show_notification": true
+}

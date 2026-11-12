@@ -1,0 +1,143 @@
+/*
+ * Copyright 2025 patryk3211
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.patryk3211.powergrid.electricity.battery;
+
+import com.simibubi.create.content.redstone.displayLink.DisplayLinkBlock;
+import com.simibubi.create.content.redstone.thresholdSwitch.ThresholdSwitchObservable;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.Nullable;
+import org.patryk3211.powergrid.electricity.base.ElectricBlockEntity;
+import org.patryk3211.powergrid.electricity.base.ThermalBehaviour;
+import org.patryk3211.powergrid.electricity.sim.node.VoltageSourceCoupling;
+import org.patryk3211.powergrid.utility.Lang;
+
+public class BatteryBlockEntity extends ElectricBlockEntity implements ThresholdSwitchObservable {
+    protected VoltageSourceCoupling sourceCoupling;
+
+    protected final BatterySpec spec;
+    protected double capacity;
+    protected double energy;
+    protected boolean refreshLinks;
+
+    public BatteryBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
+        super(type, pos, state);
+        spec = ((AbstractBatteryBlock<?>) state.getBlock()).getSpec();
+        capacity = spec.getMaxCharge();
+        energy = spec.getInitialCharge();
+        updateParameters();
+        setLazyTickRate(20);
+    }
+
+    @Override
+    public boolean isNoisy() {
+        return false;
+    }
+
+    @Override
+    public @Nullable ThermalBehaviour specifyThermalBehaviour() {
+        return ThermalBehaviour.fromConfig(this);
+    }
+
+    public void updateParameters() {
+        if(sourceCoupling == null)
+            return;
+        sourceCoupling.setVoltage(energy > 0 ? spec.calculateVoltage(1) : 0);
+    }
+
+    /**
+     * Calculate power draw from the battery
+     * @return Positive power draws energy, negative power recharges
+     */
+    public float calculatePower() {
+        return 0;
+    }
+
+    @Override
+    public void electricalTick() {
+        updateParameters();
+    }
+
+    @Override
+    public void lazyTick() {
+        super.lazyTick();
+        sendData();
+        if(refreshLinks) {
+            refreshLinks = false;
+            DisplayLinkBlock.notifyGatherers(level, worldPosition);
+        }
+    }
+
+    @Override
+    protected void write(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
+        super.write(tag, registries, clientPacket);
+        tag.putDouble("Energy", energy);
+    }
+
+    @Override
+    protected void read(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
+        super.read(tag, registries, clientPacket);
+        energy = tag.getDouble("Energy");
+        updateParameters();
+    }
+
+    @Override
+    public void buildCircuit(CircuitBuilder builder) {
+        builder.setTerminalCount(2);
+        sourceCoupling = builder.addInternalNode(VoltageSourceCoupling.class, builder.terminalNode(0), builder.terminalNode(1), 0.5f);
+        updateParameters();
+    }
+
+    public void setEnergy(double energy) {
+        this.energy = energy;
+        updateParameters();
+        if(!level.isClientSide)
+            notifyUpdate();
+    }
+
+    public double getCapacity() {
+        return capacity;
+    }
+
+    public double getEnergy() {
+        return energy;
+    }
+
+    @Override
+    public int getMaxValue() {
+        return 200;
+    }
+
+    @Override
+    public int getMinValue() {
+        return 0;
+    }
+
+    @Override
+    public int getCurrentValue() {
+        return (int) (energy / capacity * getMaxValue());
+    }
+
+    @Override
+    public MutableComponent format(int i) {
+        return Lang.numberConstant(i / 2.0)
+                .add(Lang.text("%")).component();
+    }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "minecraft:lever"
+    },
+    {
+      "tag": "c:plates/copper"
+    },
+    {
+      "item": "powergrid:conductive_casing"
+    }
+  ],
+  "result": {
+    "count": 1,
+    "id": "powergrid:mv_switch"
+  }
+}
