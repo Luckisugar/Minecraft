@@ -27,9 +27,12 @@ let ftbTickets = new Il2TicketController(Il2ResLoc.parse('ftbchunks:default'))
 
 let booted = false
 let bootTries = 0
+let emptyWaits = 0
 let ticksSinceLoad = 0
 let nextHourlyAt = 0
+let followUpAt = 0
 let HOUR_MS = 60 * 60 * 1000
+let FOLLOW_UP_MS = 45 * 1000
 
 function teamLabel(team) {
   try {
@@ -111,17 +114,73 @@ function teamShouldLoad(data, team) {
   return !!(online && online.size() > 0)
 }
 
+let levelLookupWarned = false
+
+function readMember(obj, name) {
+  try {
+    let value = obj[name]
+    if (typeof value === 'function') return value.call(obj)
+    if (value !== undefined && value !== null) return value
+  } catch (e) {}
+  return null
+}
+
+function dimensionName(holder) {
+  if (!holder) return ''
+  let dim = readMember(holder, 'dimension')
+  let target = dim || holder
+  let loc = readMember(target, 'location')
+  if (loc) return '' + loc
+  return '' + target
+}
+
+function levelByName(server, dimName) {
+  let want = '' + dimName
+  try {
+    let levels = server.getAllLevels()
+    let it = levels.iterator()
+    while (it.hasNext()) {
+      let level = it.next()
+      if (dimensionName(level) === want) return level
+    }
+  } catch (e) {
+    if (!levelLookupWarned) {
+      levelLookupWarned = true
+      console.warn('Offline force-load could not list levels for ' + want + ': ' + e)
+    }
+  }
+  if (want === 'minecraft:overworld') {
+    try {
+      if (server.overworld && server.overworld()) return server.overworld()
+    } catch (e2) {}
+    try {
+      if (server.getOverworld && server.getOverworld()) return server.getOverworld()
+    } catch (e3) {}
+  }
+  return null
+}
+
 function levelForKey(server, dimKey) {
+  let name = dimensionName(dimKey)
+  if (!name) name = '' + dimKey
+  let level = levelByName(server, name)
+  if (level) return level
   try {
     return server.getLevel(dimKey)
-  } catch (e) {
+  } catch (e2) {
+    if (!levelLookupWarned) {
+      levelLookupWarned = true
+      console.warn('Offline force-load could not open ' + name + ': ' + e2)
+    }
     return null
   }
 }
 
 function levelForName(server, dimName) {
+  let level = levelByName(server, dimName)
+  if (level) return level
   try {
-    let key = Il2ResKey.create(Il2Registries.DIMENSION, Il2ResLoc.parse(dimName))
+    let key = Il2ResKey.create(Il2Registries.DIMENSION, Il2ResLoc.parse('' + dimName))
     return server.getLevel(key)
   } catch (e) {
     return null
@@ -136,15 +195,42 @@ function loadedChunk(level, x, z) {
   }
 }
 
+// Rhino treats TicketController.forceChunk(level, owner, ...) as ambiguous between
+// the UUID overload and the BlockPos overload, so a direct call throws and
+// removes nothing. Bind the exact Java method instead.
+let ForceChunks = null
+let forceBindFailed = false
+
+function bindForceMethods() {
+  if (ForceChunks) return true
+  if (forceBindFailed) return false
+  try {
+    // Loaded from the il2forcechunks mod. KubeJS cannot call forceChunk itself:
+    // the BlockPos and UUID overloads are ambiguous, and java.lang.Class is blocked.
+    ForceChunks = Java.loadClass('il2.ForceChunks')
+    return true
+  } catch (e) {
+    forceBindFailed = true
+    console.error('Offline force-load could not bind forceChunk: ' + e)
+    return false
+  }
+}
+
+function invokeForce(kind, controller, level, owner, x, z, add, ticking) {
+  if (kind === 'block') return ForceChunks.block(controller, level, owner, x | 0, z | 0, !!add, !!ticking) == true
+  return ForceChunks.uuid(controller, level, owner, x | 0, z | 0, !!add, !!ticking) == true
+}
+
 function dropFtbTicket(level, teamId, x, z) {
+  if (!bindForceMethods()) return 0
   let removed = 0
   try {
-    if (ftbTickets.forceChunk(level, teamId, x, z, false, true)) removed++
+    if (invokeForce('uuid', ftbTickets, level, teamId, x, z, false, true)) removed++
   } catch (e) {
     console.error('FTB ticket drop failed at ' + x + ',' + z + ': ' + e)
   }
   try {
-    if (ftbTickets.forceChunk(level, teamId, x, z, false, false)) removed++
+    if (invokeForce('uuid', ftbTickets, level, teamId, x, z, false, false)) removed++
   } catch (e) {
     console.error('FTB non-ticking ticket drop failed at ' + x + ',' + z + ': ' + e)
   }
@@ -152,17 +238,18 @@ function dropFtbTicket(level, teamId, x, z) {
 }
 
 function dropFluxTicket(level, pos) {
+  if (!bindForceMethods()) return false
   let cx = pos.getX() >> 4
   let cz = pos.getZ() >> 4
   let controller = Il2FluxLoading.CONTROLLER
   try {
-    if (controller.forceChunk(level, pos, cx, cz, false, true)) return true
+    if (invokeForce('block', controller, level, pos, cx, cz, false, true)) return true
   } catch (e) {
     console.error('Flux ticket drop failed at ' + pos + ': ' + e)
     return false
   }
   try {
-    return !!controller.forceChunk(level, pos, cx, cz, false, false)
+    return invokeForce('block', controller, level, pos, cx, cz, false, false)
   } catch (e) {
     console.error('Flux non-ticking ticket drop failed at ' + pos + ': ' + e)
     return false
@@ -170,12 +257,25 @@ function dropFluxTicket(level, pos) {
 }
 
 function resumeFluxTicket(level, pos) {
+  if (!bindForceMethods()) return false
   let cx = pos.getX() >> 4
   let cz = pos.getZ() >> 4
   try {
-    return !!Il2FluxLoading.CONTROLLER.forceChunk(level, pos, cx, cz, true, true)
+    return invokeForce('block', Il2FluxLoading.CONTROLLER, level, pos, cx, cz, true, true)
   } catch (e) {
     console.error('Flux ticket resume failed at ' + pos + ': ' + e)
+    return false
+  }
+}
+
+function isFluxDevice(be) {
+  if (!be) return false
+  try {
+    if (Il2FluxDevice.isInstance(be)) return true
+  } catch (e) {}
+  try {
+    return be instanceof Il2FluxDevice
+  } catch (e2) {
     return false
   }
 }
@@ -221,10 +321,19 @@ function sweepOfflineForceLoads(server, reason) {
     if (chunk.isForceLoaded()) row.forced.push(chunk)
   }
 
+  if (byTeam.size === 0) {
+    if (emptyWaits === 0) console.warn('Offline force-load sweep waiting: claims are not loaded yet')
+    return false
+  }
+
   let ftbRemoved = 0
   let ftbTried = 0
   let fluxPaused = 0
   let fluxResumed = 0
+  let offlineTeams = 0
+  let forcedClaims = 0
+  let loadedClaims = 0
+  let fluxSeen = 0
 
   byTeam.forEach(row => {
     if (teamShouldLoad(row.data, row.team)) {
@@ -239,13 +348,25 @@ function sweepOfflineForceLoads(server, reason) {
           continue
         }
         let pos = new Il2BlockPos(entry.x | 0, entry.y | 0, entry.z | 0)
+        let be = null
+        try {
+          be = level.getBlockEntity(pos)
+        } catch (e) {
+          be = null
+        }
+        // Chunk not loaded: keep the position and try again later.
+        // A different block, or chunk loading turned off, is forgotten on purpose.
+        if (be && (!isFluxDevice(be) || !readMember(be, 'isForcedLoading'))) continue
         if (resumeFluxTicket(level, pos)) fluxResumed++
+        else kept.push(entry)
       }
       if (kept.length) suspended[row.id] = kept
       else delete suspended[row.id]
       return
     }
 
+    offlineTeams++
+    forcedClaims += row.forced.length
     if (row.forced.length) {
       try {
         row.data.updateChunkTickets(false)
@@ -255,7 +376,7 @@ function sweepOfflineForceLoads(server, reason) {
       let teamId = row.data.getTeamId()
       for (let i = 0; i < row.forced.length; i++) {
         let pos = row.forced[i].getPos()
-        let level = levelForKey(server, pos.dimension())
+        let level = levelForKey(server, readMember(pos, 'dimension'))
         if (!level) continue
         ftbTried++
         ftbRemoved += dropFtbTicket(level, teamId, pos.x(), pos.z())
@@ -268,10 +389,11 @@ function sweepOfflineForceLoads(server, reason) {
     let pausedHere = 0
     for (let i = 0; i < row.claims.length; i++) {
       let cpos = row.claims[i].getPos()
-      let level = levelForKey(server, cpos.dimension())
+      let level = levelForKey(server, readMember(cpos, 'dimension'))
       if (!level) continue
       let loaded = loadedChunk(level, cpos.x(), cpos.z())
       if (!loaded) continue
+      loadedClaims++
       let bes = null
       try {
         bes = loaded.getBlockEntities()
@@ -282,11 +404,23 @@ function sweepOfflineForceLoads(server, reason) {
       let values = bes.values().iterator()
       while (values.hasNext()) {
         let be = values.next()
-        if (!(be instanceof Il2FluxDevice)) continue
-        if (!be.isForcedLoading()) continue
+        if (!isFluxDevice(be)) continue
+        fluxSeen++
+        let flagged = false
+        try {
+          flagged = !!readMember(be, 'isForcedLoading')
+        } catch (e) {
+          flagged = false
+        }
         let bp = be.getBlockPos()
+        if (!flagged) {
+          // The ticket can still be in NeoForge after the flag was cleared.
+          // Drop it, but do not remember it: login should not turn it back on.
+          if (dropFluxTicket(level, bp)) pausedHere++
+          continue
+        }
         let entry = {
-          dim: '' + level.dimension().location(),
+          dim: dimensionName(level),
           x: bp.getX(),
           y: bp.getY(),
           z: bp.getZ()
@@ -299,6 +433,15 @@ function sweepOfflineForceLoads(server, reason) {
         if (dropFluxTicket(level, bp)) pausedHere++
       }
     }
+    // Tickets can sit on positions we already recorded even when the chunk
+    // is not loaded right now. Removing one does not need the block entity.
+    for (let n = 0; n < list.length; n++) {
+      let known = list[n]
+      let knownLevel = levelForName(server, known.dim)
+      if (!knownLevel) continue
+      let knownPos = new Il2BlockPos(known.x | 0, known.y | 0, known.z | 0)
+      if (dropFluxTicket(knownLevel, knownPos)) pausedHere++
+    }
     if (list.length) suspended[row.id] = list
     else delete suspended[row.id]
     fluxPaused += pausedHere
@@ -307,8 +450,9 @@ function sweepOfflineForceLoads(server, reason) {
     }
   })
 
+  if (!path) console.warn('Offline force-load sweep has nowhere to save paused flux positions')
   writeSuspend(path, suspended)
-  console.info('Offline force-load sweep (' + reason + '): FTB removed ' + ftbRemoved + '/' + ftbTried + ', flux paused ' + fluxPaused + ', flux resumed ' + fluxResumed)
+  console.info('Offline force-load sweep (' + reason + '): teams ' + byTeam.size + ', offline ' + offlineTeams + ', forced claims ' + forcedClaims + ', loaded claims ' + loadedClaims + ', flux devices ' + fluxSeen + ', FTB removed ' + ftbRemoved + '/' + ftbTried + ', flux paused ' + fluxPaused + ', flux resumed ' + fluxResumed)
   return true
 }
 
@@ -320,8 +464,21 @@ ServerEvents.tick(event => {
     ticksSinceLoad++
     if (ticksSinceLoad < 200) return
     try {
-      if (!sweepOfflineForceLoads(event.server, 'boot')) return
+      if (!sweepOfflineForceLoads(event.server, 'boot')) {
+        emptyWaits++
+        ticksSinceLoad = 160
+        // About a minute of retries. Claims come back a bit after /reload.
+        if (emptyWaits >= 20) {
+          booted = true
+          followUpAt = now + FOLLOW_UP_MS
+          nextHourlyAt = now + HOUR_MS
+          console.warn('Offline force-load gave up waiting for claims. Next try is the follow-up, then hourly.')
+        }
+        return
+      }
+      emptyWaits = 0
       booted = true
+      followUpAt = now + FOLLOW_UP_MS
       nextHourlyAt = now + HOUR_MS
     } catch (e) {
       bootTries++
@@ -329,10 +486,19 @@ ServerEvents.tick(event => {
       ticksSinceLoad = 160
       if (bootTries >= 5) {
         booted = true
+        followUpAt = now + FOLLOW_UP_MS
         nextHourlyAt = now + HOUR_MS
       }
     }
     return
+  }
+  if (followUpAt && now >= followUpAt) {
+    followUpAt = 0
+    try {
+      sweepOfflineForceLoads(event.server, 'follow-up')
+    } catch (e) {
+      console.error('Offline force-load follow-up failed: ' + e)
+    }
   }
   if (now < nextHourlyAt) return
   nextHourlyAt = now + HOUR_MS

@@ -1,0 +1,24 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mods]]
+modId = "il2forcechunks"
+version = "1.0.0"
+displayName = "IL2 Force Chunks"
+authors = "Luckisugar"
+description = '''Single-overload wrappers so KubeJS can add and drop NeoForge chunk tickets.'''
+
+[[dependencies.il2forcechunks]]
+modId = "minecraft"
+type = "REQUIRED"
+versionRange = "[1.21.1,1.21.2)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.il2forcechunks]]
+modId = "neoforge"
+type = "REQUIRED"
+versionRange = "[21.1,)"
+ordering = "NONE"
+side = "BOTH"
