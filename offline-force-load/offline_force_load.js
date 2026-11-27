@@ -12,17 +12,19 @@
 // as non-ticking comes back success=false and the chunk keeps ticking. Ask for
 // both ticket kinds and trust the boolean.
 
-let ClaimedChunkManagerImpl = Java.loadClass('dev.ftb.mods.ftbchunks.data.ClaimedChunkManagerImpl')
-let TicketController = Java.loadClass('net.neoforged.neoforge.common.world.chunk.TicketController')
-let ResourceLocation = Java.loadClass('net.minecraft.resources.ResourceLocation')
-let ResourceKey = Java.loadClass('net.minecraft.resources.ResourceKey')
-let Registries = Java.loadClass('net.minecraft.core.registries.Registries')
-let BlockPos = Java.loadClass('net.minecraft.core.BlockPos')
-let FluxChunkLoading = Java.loadClass('sonar.fluxnetworks.common.level.FluxChunkLoading')
-let TileFluxDevice = Java.loadClass('sonar.fluxnetworks.common.device.TileFluxDevice')
-let Files = Java.loadClass('java.nio.file.Files')
+// Names are prefixed because KubeJS already declares ResourceLocation and other
+// classes as const. Declaring them again aborts the whole script on /reload.
+let Il2ClaimMgr = Java.loadClass('dev.ftb.mods.ftbchunks.data.ClaimedChunkManagerImpl')
+let Il2TicketController = Java.loadClass('net.neoforged.neoforge.common.world.chunk.TicketController')
+let Il2ResLoc = Java.loadClass('net.minecraft.resources.ResourceLocation')
+let Il2ResKey = Java.loadClass('net.minecraft.resources.ResourceKey')
+let Il2Registries = Java.loadClass('net.minecraft.core.registries.Registries')
+let Il2BlockPos = Java.loadClass('net.minecraft.core.BlockPos')
+let Il2FluxLoading = Java.loadClass('sonar.fluxnetworks.common.level.FluxChunkLoading')
+let Il2FluxDevice = Java.loadClass('sonar.fluxnetworks.common.device.TileFluxDevice')
+let Il2Files = Java.loadClass('java.nio.file.Files')
 
-let ftbTickets = new TicketController(ResourceLocation.parse('ftbchunks:default'))
+let ftbTickets = new Il2TicketController(Il2ResLoc.parse('ftbchunks:default'))
 
 let booted = false
 let bootTries = 0
@@ -64,8 +66,8 @@ function suspendFile(server) {
 function readSuspend(path) {
   if (!path) return {}
   try {
-    if (!Files.exists(path)) return {}
-    let text = '' + Files.readString(path)
+    if (!Il2Files.exists(path)) return {}
+    let text = '' + Il2Files.readString(path)
     if (!text.trim()) return {}
     let parsed = JSON.parse(text)
     if (!parsed || typeof parsed !== 'object') return {}
@@ -98,8 +100,8 @@ function writeSuspend(path, data) {
     lines.push('  "' + id + '": [' + parts.join(',') + ']' + comma)
   }
   lines.push('}')
-  Files.createDirectories(path.getParent())
-  Files.writeString(path, lines.join('\n') + '\n')
+  Il2Files.createDirectories(path.getParent())
+  Il2Files.writeString(path, lines.join('\n') + '\n')
 }
 
 function teamShouldLoad(data, team) {
@@ -123,7 +125,7 @@ function levelForKey(server, dimKey) {
 
 function levelForName(server, dimName) {
   try {
-    let key = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(dimName))
+    let key = Il2ResKey.create(Il2Registries.DIMENSION, Il2ResLoc.parse(dimName))
     return server.getLevel(key)
   } catch (e) {
     return null
@@ -156,7 +158,7 @@ function dropFtbTicket(level, teamId, x, z) {
 function dropFluxTicket(level, pos) {
   let cx = pos.getX() >> 4
   let cz = pos.getZ() >> 4
-  let controller = FluxChunkLoading.CONTROLLER
+  let controller = Il2FluxLoading.CONTROLLER
   try {
     if (controller.forceChunk(level, pos, cx, cz, false, true)) return true
   } catch (e) {
@@ -175,7 +177,7 @@ function resumeFluxTicket(level, pos) {
   let cx = pos.getX() >> 4
   let cz = pos.getZ() >> 4
   try {
-    return !!FluxChunkLoading.CONTROLLER.forceChunk(level, pos, cx, cz, true, true)
+    return !!Il2FluxLoading.CONTROLLER.forceChunk(level, pos, cx, cz, true, true)
   } catch (e) {
     console.error('Flux ticket resume failed at ' + pos + ': ' + e)
     return false
@@ -191,7 +193,7 @@ function sweepOfflineForceLoads(server, reason) {
     console.warn('Offline force-load sweep waiting: overworld is not ready')
     return false
   }
-  let manager = ClaimedChunkManagerImpl.getInstance()
+  let manager = Il2ClaimMgr.getInstance()
   if (!manager) {
     console.warn('Offline force-load sweep skipped: FTB Chunks manager is not loaded')
     return false
@@ -240,7 +242,7 @@ function sweepOfflineForceLoads(server, reason) {
           kept.push(entry)
           continue
         }
-        let pos = new BlockPos(entry.x | 0, entry.y | 0, entry.z | 0)
+        let pos = new Il2BlockPos(entry.x | 0, entry.y | 0, entry.z | 0)
         if (resumeFluxTicket(level, pos)) fluxResumed++
       }
       if (kept.length) suspended[row.id] = kept
@@ -284,7 +286,7 @@ function sweepOfflineForceLoads(server, reason) {
       let values = bes.values().iterator()
       while (values.hasNext()) {
         let be = values.next()
-        if (!(be instanceof TileFluxDevice)) continue
+        if (!(be instanceof Il2FluxDevice)) continue
         if (!be.isForcedLoading()) continue
         let bp = be.getBlockPos()
         let entry = {
