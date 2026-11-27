@@ -11,7 +11,7 @@ This script runs after boot, when a player logs in or out, and once an hour. For
 
 Claims and the FTB force-load squares stay. The Flux "chunk loading" setting stays on the block. When a member logs back in, FTB restores its own tickets and this script puts the Flux tickets back.
 
-The positions it paused are written to `kubejs/data/offline_force_load.json` on the server. That file is runtime state, not part of this repo.
+The positions it paused are written to `kubejs/offline_force_load.json` on the server. That file is runtime state, not part of this repo.
 
 ## Install
 

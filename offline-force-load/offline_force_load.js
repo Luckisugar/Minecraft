@@ -22,7 +22,6 @@ let Il2Registries = Java.loadClass('net.minecraft.core.registries.Registries')
 let Il2BlockPos = Java.loadClass('net.minecraft.core.BlockPos')
 let Il2FluxLoading = Java.loadClass('sonar.fluxnetworks.common.level.FluxChunkLoading')
 let Il2FluxDevice = Java.loadClass('sonar.fluxnetworks.common.device.TileFluxDevice')
-let Il2Files = Java.loadClass('java.nio.file.Files')
 
 let ftbTickets = new Il2TicketController(Il2ResLoc.parse('ftbchunks:default'))
 
@@ -60,20 +59,18 @@ function serverDir(server) {
 function suspendFile(server) {
   let root = serverDir(server)
   if (!root) return null
-  return root.resolve('kubejs').resolve('data').resolve('offline_force_load.json')
+  return root.resolve('kubejs').resolve('offline_force_load.json')
 }
 
 function readSuspend(path) {
   if (!path) return {}
   try {
-    if (!Il2Files.exists(path)) return {}
-    let text = '' + Il2Files.readString(path)
+    let text = '' + JsonIO.readString(path)
     if (!text.trim()) return {}
     let parsed = JSON.parse(text)
     if (!parsed || typeof parsed !== 'object') return {}
     return parsed
   } catch (e) {
-    console.warn('Offline force-load suspend file unreadable, starting clean: ' + e)
     return {}
   }
 }
@@ -100,8 +97,7 @@ function writeSuspend(path, data) {
     lines.push('  "' + id + '": [' + parts.join(',') + ']' + comma)
   }
   lines.push('}')
-  Il2Files.createDirectories(path.getParent())
-  Il2Files.writeString(path, lines.join('\n') + '\n')
+  JsonIO.write(path, JsonIO.parseRaw(lines.join('\n') + '\n'))
 }
 
 function teamShouldLoad(data, team) {
