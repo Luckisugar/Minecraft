@@ -6,6 +6,7 @@ Minecraft projects and server-side customizations by [Luckisugar](https://github
 
 - [Create: Power Grid simplified server build](./create-power-grid/) — generators, solar, and the line math used on Infinity Legacy II. Clients keep the original jar.
 - [Power Grid no-overvoltage server build](./powergrid-no-overvoltage-server/) — older patch that only ties bulb and switch failures to the overheating setting.
+- [Offline force-load](./offline-force-load/) — KubeJS script that unloads FTB Chunks and Flux Networks tickets for teams with nobody online.
 
 ## Star history
 
@@ -17,3 +18,4 @@ Projetos de Minecraft e ajustes feitos para o servidor.
 
 - [Create: Power Grid, versão simplificada de servidor](./create-power-grid/)
 - [Power Grid sem falha por sobretensão](./powergrid-no-overvoltage-server/)
+- [Force-load offline](./offline-force-load/) — script de KubeJS que descarrega os tickets do FTB Chunks e do Flux Networks quando o time está vazio.
